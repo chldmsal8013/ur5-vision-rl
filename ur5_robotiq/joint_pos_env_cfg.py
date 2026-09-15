@@ -412,3 +412,12 @@ class UR5RobotiqCubeLiftEnvCfg_PLAY(UR5RobotiqCubeLiftEnvCfg):
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
         self.observations.policy.enable_corruption = False
+
+@configclass
+class UR5RobotiqCubeLiftEnvCfg_State(UR5RobotiqCubeLiftEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Vision observation 비활성화
+        self.observations.image = None
+        self.scene.tiled_camera = None

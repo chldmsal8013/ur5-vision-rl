@@ -7,13 +7,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-<<<<<<< HEAD
 import torch
 
-from isaaclab.assets import RigidObject
-=======
 from isaaclab.assets import Articulation, RigidObject
->>>>>>> feature/ur5-config
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, FrameTransformer
 from isaaclab.utils.math import combine_frame_transforms

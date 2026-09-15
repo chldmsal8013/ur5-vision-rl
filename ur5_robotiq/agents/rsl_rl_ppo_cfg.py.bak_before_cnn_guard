@@ -7,60 +7,60 @@ try:
 except ImportError:
     _CNN_AVAILABLE = False
 
-if _CNN_AVAILABLE:
-    @configclass
-    class UR5RobotiqLiftPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-        num_steps_per_env = 24
-        max_iterations = 30000
-        save_interval = 500
-        experiment_name = "ur5_robotiq_lift"
-        # NOTE: fresh run required -- CNNActorCritic's state_dict does not match the old
-        # state-based checkpoint's ActorCritic, loading it would crash.
-        resume = False
-        # "policy"/"critic" obs sets each combine the 1D "policy" group (joint state, command,
-        # last action) with the 4D "image" group (raw camera pixels, routed through the CNN
-        # inside CNNActorCritic). See cnn_policy.py.
-        obs_groups = {
-            "policy": ["policy", "image"],
-            "critic": ["policy", "image"],
-        }
-        policy = CNNActorCriticCfg(
-            init_noise_std=1.0,
-            # [FIX] 2026-09-06: False -> True. This flag was previously a no-op (CNNActorCritic
-            # in cnn_policy.py always built nn.Identity() regardless of it -- fixed alongside
-            # this change). Unnormalized 1D state obs (joint pos/vel, distances, deviations)
-            # feeding directly into a freshly-initialized linear critic head is the suspected
-            # root cause of the recurring value_function loss explosions (1e17-1e33, grad_norm=inf)
-            # seen from iter ~41 onward in vision_rl_contact_fix_fresh_check.log and repeatedly
-            # in vision_rl_contact_filter_fixed_5k_smoke.log (up to iter 34999, position_error
-            # never converges -- policy never learns to reach, let alone grasp). The explosion
-            # in both logs starts from a tiny, unremarkable value_function loss (~0.003-1600) and
-            # compounds ~1000x per iteration with no accompanying physical/reward anomaly --
-            # the signature of critic self-bootstrap divergence, not a physics/contact event
-            # (grasp_contact_bonus was 0.0000 for the ENTIRE run in both logs, so bilateral
-            # finger contact force cannot be the trigger).
-            actor_obs_normalization=True,
-            critic_obs_normalization=True,
-            actor_hidden_dims=[256, 128, 64],
-            critic_hidden_dims=[256, 128, 64],
-            activation="elu",
-            cnn_feature_dim=256,
-            image_group_name="image",
-        )
-        algorithm = RslRlPpoAlgorithmCfg(
-            value_loss_coef=1.0,
-            use_clipped_value_loss=True,
-            clip_param=0.2,
-            entropy_coef=0.005,
-            num_learning_epochs=5,
-            num_mini_batches=4,
-            learning_rate=1.0e-4,
-            schedule="fixed",
-            gamma=0.99,
-            lam=0.95,
-            desired_kl=0.01,
-            max_grad_norm=1.0,
-        )
+
+@configclass
+class UR5RobotiqLiftPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 30000
+    save_interval = 500
+    experiment_name = "ur5_robotiq_lift"
+    # NOTE: fresh run required -- CNNActorCritic's state_dict does not match the old
+    # state-based checkpoint's ActorCritic, loading it would crash.
+    resume = False
+    # "policy"/"critic" obs sets each combine the 1D "policy" group (joint state, command,
+    # last action) with the 4D "image" group (raw camera pixels, routed through the CNN
+    # inside CNNActorCritic). See cnn_policy.py.
+    obs_groups = {
+        "policy": ["policy", "image"],
+        "critic": ["policy", "image"],
+    }
+    policy = CNNActorCriticCfg(
+        init_noise_std=1.0,
+        # [FIX] 2026-09-06: False -> True. This flag was previously a no-op (CNNActorCritic
+        # in cnn_policy.py always built nn.Identity() regardless of it -- fixed alongside
+        # this change). Unnormalized 1D state obs (joint pos/vel, distances, deviations)
+        # feeding directly into a freshly-initialized linear critic head is the suspected
+        # root cause of the recurring value_function loss explosions (1e17-1e33, grad_norm=inf)
+        # seen from iter ~41 onward in vision_rl_contact_fix_fresh_check.log and repeatedly
+        # in vision_rl_contact_filter_fixed_5k_smoke.log (up to iter 34999, position_error
+        # never converges -- policy never learns to reach, let alone grasp). The explosion
+        # in both logs starts from a tiny, unremarkable value_function loss (~0.003-1600) and
+        # compounds ~1000x per iteration with no accompanying physical/reward anomaly --
+        # the signature of critic self-bootstrap divergence, not a physics/contact event
+        # (grasp_contact_bonus was 0.0000 for the ENTIRE run in both logs, so bilateral
+        # finger contact force cannot be the trigger).
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
+        actor_hidden_dims=[256, 128, 64],
+        critic_hidden_dims=[256, 128, 64],
+        activation="elu",
+        cnn_feature_dim=256,
+        image_group_name="image",
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.005,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-4,
+        schedule="fixed",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
 @configclass
 class UR5RobotiqLiftStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24

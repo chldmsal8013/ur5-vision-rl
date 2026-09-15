@@ -39,3 +39,13 @@ gym.register(
     },
     disable_env_checker=True,
 )
+
+gym.register(
+    id="Isaac-Lift-Cube-UR5-Robotiq-State-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5RobotiqCubeLiftEnvCfg_State",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:UR5RobotiqLiftStatePPORunnerCfg",
+    },
+    disable_env_checker=True,
+)
