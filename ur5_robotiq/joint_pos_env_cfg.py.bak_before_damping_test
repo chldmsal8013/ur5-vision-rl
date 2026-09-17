@@ -17,7 +17,7 @@ from isaaclab_tasks.manager_based.manipulation.lift.lift_env_cfg import LiftEnvC
 from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.sensors import TiledCameraCfg, ContactSensorCfg
 import isaaclab.sim as sim_utils
-from isaaclab_tasks.manager_based.manipulation.lift.config.ur5_robotiq.commands import TargetColorCommandCfg
+
 
 def raw_rgb_image(env, sensor_cfg):
     """Raw RGB image, normalized to [0, 1], as (N, H, W, 3). Fed to a learnable CNN in the policy."""
@@ -100,7 +100,7 @@ UR5_ROBOTIQ_CFG = ArticulationCfg(
             effort_limit_sim=1650.0,
             velocity_limit_sim=10.0,
             stiffness=17.0,
-            damping=0.2,
+            damping=0.02,
         ),
         "gripper_finger": ImplicitActuatorCfg(
             joint_names_expr=["right_inner_finger_joint", "left_inner_finger_joint"],
@@ -426,27 +426,7 @@ class UR5RobotiqCubeLiftEnvCfg_State(UR5RobotiqCubeLiftEnvCfg):
         self.rewards.object_is_lifted_bonus.weight = 0.0
         self.rewards.grasp_contact_bonus.weight = 0.0
         self.rewards.simple_lift_bonus = RewTerm(
-            func=mdp.object_is_lifted_target_aware,
+            func=mdp.object_is_lifted,
             weight=15.0,
-            params={"minimal_height": 0.05},
-        )
-        self.commands.target_color = TargetColorCommandCfg(resampling_time_range=(1e9, 1e9))
-        self.observations.policy.target_color = ObsTerm(func=mdp.target_color_onehot)
-
-        self.rewards.reaching_object = RewTerm(
-            func=mdp.object_ee_distance_target_aware,
-            weight=0.8,
-            params={"std": 0.3},
-        )
-        self.rewards.home_pose_after_lift = RewTerm(
-            func=mdp.home_pose_after_lift,
-            weight=3.0,
-            params={
-                "minimal_height": 0.05,
-                "std": 0.5,
-                "robot_cfg": SceneEntityCfg("robot", joint_names=[
-                    "shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
-                    "wrist_1_joint", "wrist_2_joint", "wrist_3_joint",
-                ]),
-            },
+            params={"minimal_height": 0.05, "object_cfg": SceneEntityCfg("object")},
         )
