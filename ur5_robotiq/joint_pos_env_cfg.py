@@ -430,6 +430,11 @@ class UR5RobotiqCubeLiftEnvCfg_State(UR5RobotiqCubeLiftEnvCfg):
             weight=15.0,
             params={"minimal_height": 0.05},
         )
+        self.rewards.object_goal_tracking = RewTerm(
+            func=mdp.object_goal_distance_target_aware,
+            weight=2.0,
+            params={"std": 0.3, "minimal_height": 0.05, "command_name": "object_pose"},
+        )
         self.commands.target_color = TargetColorCommandCfg(resampling_time_range=(1e9, 1e9))
         self.observations.policy.target_color = ObsTerm(func=mdp.target_color_onehot)
 

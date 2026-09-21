@@ -289,3 +289,33 @@ def home_pose_after_lift(
     reward = (1.0 - torch.tanh(pose_error / std)) * is_lifted.float()
 
     return reward
+
+def object_goal_distance_target_aware(
+    env: ManagerBasedRLEnv,
+    std: float,
+    minimal_height: float,
+    command_name: str,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    distractor_cfg: SceneEntityCfg = SceneEntityCfg("distractor"),
+) -> torch.Tensor:
+    """target_color command에 따라 object 또는 distractor 중 실제 target인 쪽을 목표 위치로 이송했는지 판단."""
+    target_color = env.command_manager.get_command("target_color")
+    robot: RigidObject = env.scene[robot_cfg.name]
+    object: RigidObject = env.scene[object_cfg.name]
+    distractor: RigidObject = env.scene[distractor_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    des_pos_b = command[:, :3]
+    des_pos_w, _ = combine_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, des_pos_b)
+
+    # 힌트 적용:
+    # 1. target_color == 0 은 (num_envs,) 형태
+    # 2. object/distractor root_pos_w 는 (num_envs, 3) 형태
+    # 3. 따라서 .unsqueeze(-1)을 붙여 (num_envs, 1)로 만들어 3차원 축으로 브로드캐스팅 확장
+    target_pos = torch.where((target_color == 0).unsqueeze(-1), object.data.root_pos_w, distractor.data.root_pos_w)
+
+    # target_pos의 z축 성분(높이) 추출: shape (num_envs,)
+    target_height = target_pos[:, 2]
+
+    distance = torch.norm(des_pos_w - target_pos, dim=1)
+    return (target_height > minimal_height) * (1 - torch.tanh(distance / std))
