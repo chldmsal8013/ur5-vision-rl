@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from isaaclab.utils.math import quat_apply
+
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, FrameTransformer
@@ -308,10 +310,7 @@ def object_goal_distance_target_aware(
     des_pos_b = command[:, :3]
     des_pos_w, _ = combine_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, des_pos_b)
 
-    # 힌트 적용:
-    # 1. target_color == 0 은 (num_envs,) 형태
-    # 2. object/distractor root_pos_w 는 (num_envs, 3) 형태
-    # 3. 따라서 .unsqueeze(-1)을 붙여 (num_envs, 1)로 만들어 3차원 축으로 브로드캐스팅 확장
+
     target_pos = torch.where((target_color == 0).unsqueeze(-1), object.data.root_pos_w, distractor.data.root_pos_w)
 
     # target_pos의 z축 성분(높이) 추출: shape (num_envs,)
@@ -319,3 +318,29 @@ def object_goal_distance_target_aware(
 
     distance = torch.norm(des_pos_w - target_pos, dim=1)
     return (target_height > minimal_height) * (1 - torch.tanh(distance / std))
+
+def top_down_orientation_after_lift(
+    env: ManagerBasedRLEnv,
+    minimal_height: float,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    distractor_cfg: SceneEntityCfg = SceneEntityCfg("distractor"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """들려있을 때, EE local Z축이 world -Z(top-down)에 얼마나 정렬됐는지 보상."""
+    target_color = env.command_manager.get_command("target_color")
+    object: RigidObject = env.scene[object_cfg.name]
+    distractor: RigidObject = env.scene[distractor_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+
+    object_height = object.data.root_pos_w[:, 2]
+    distractor_height = distractor.data.root_pos_w[:, 2]
+    target_height = torch.where(target_color == 0, object_height, distractor_height)
+    is_lifted = (target_height > minimal_height).float()
+
+    ee_quat = ee_frame.data.target_quat_w[:, 0, :]
+    local_z_world = quat_apply(ee_quat, torch.tensor([0.0, 0.0, 1.0], device=ee_quat.device).expand(ee_quat.shape[0], 3))
+    world_down = torch.tensor([0.0, 0.0, -1.0], device=ee_quat.device).expand_as(local_z_world)
+
+    alignment = torch.sum(local_z_world * world_down, dim=-1)  # -1(완전 위)~+1(완벽 top-down)
+
+    return alignment * is_lifted

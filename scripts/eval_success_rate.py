@@ -212,6 +212,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     total_successes_blue = 0
     total_episodes_red = 0
     total_episodes_blue = 0
+    # place 성공 조건: target 큐브가 goal position으로부터 이 거리 이내
+    place_success_threshold = 0.15
+    lift_success_this_episode = torch.zeros(num_envs, dtype=torch.bool, device=device)
+    place_success_this_episode = torch.zeros(num_envs, dtype=torch.bool, device=device)
+    total_lift_successes = 0
+    total_place_successes = 0
+    total_overall_successes = 0
     target_eval_steps = 5000
 
     # simulate environment
@@ -227,6 +234,25 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
         is_lifted = mdp.object_is_lifted_target_aware(env.unwrapped, minimal_height=0.15).bool()
         success_this_episode |= is_lifted
+        lift_success_this_episode |= is_lifted
+
+        # place 조건: target color 큐브 위치와 목표 위치(object_pose command) 사이 거리
+        target_color = env.unwrapped.command_manager.get_command("target_color")
+        object_rb = env.unwrapped.scene["object"]
+        distractor_rb = env.unwrapped.scene["distractor"]
+        robot = env.unwrapped.scene["robot"]
+        command = env.unwrapped.command_manager.get_command("object_pose")
+        from isaaclab.utils.math import combine_frame_transforms
+        des_pos_b = command[:, :3]
+        des_pos_w, _ = combine_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, des_pos_b)
+        target_pos = torch.where(
+            (target_color == 0).unsqueeze(-1),
+            object_rb.data.root_pos_w,
+            distractor_rb.data.root_pos_w,
+        )
+        place_dist = torch.norm(target_pos - des_pos_w, dim=1)
+        is_placed = (place_dist < place_success_threshold) & is_lifted
+        place_success_this_episode |= is_placed
 
         done_ids = dones.nonzero(as_tuple=False).flatten()
         if len(done_ids) > 0:
@@ -236,6 +262,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
             total_successes += done_success.sum().item()
             total_episodes[done_ids] += 1
+
+            done_lift = lift_success_this_episode[done_ids]
+            done_place = place_success_this_episode[done_ids]
+            total_lift_successes += done_lift.sum().item()
+            total_place_successes += done_place.sum().item()
+            total_overall_successes += (done_lift & done_place).sum().item()
+            lift_success_this_episode[done_ids] = False
+            place_success_this_episode[done_ids] = False
 
             red_mask = done_colors == 0
             blue_mask = done_colors == 1
@@ -262,6 +296,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     print(f"SUCCESS_RATE: {total_successes}/{total_eps} = {rate:.2f}%")
     print(f"SUCCESS_RATE_RED: {total_successes_red}/{total_episodes_red} = {rate_red:.2f}%")
     print(f"SUCCESS_RATE_BLUE: {total_successes_blue}/{total_episodes_blue} = {rate_blue:.2f}%")
+    lift_rate = 100.0 * total_lift_successes / max(total_eps, 1)
+    place_rate = 100.0 * total_place_successes / max(total_eps, 1)
+    overall_rate = 100.0 * total_overall_successes / max(total_eps, 1)
+    print(f"LIFT_RATE: {total_lift_successes}/{total_eps} = {lift_rate:.2f}%")
+    print(f"PLACE_RATE: {total_place_successes}/{total_eps} = {place_rate:.2f}%")
+    print(f"OVERALL_RATE: {total_overall_successes}/{total_eps} = {overall_rate:.2f}%")
 
     # close the simulator
     env.close()

@@ -455,3 +455,8 @@ class UR5RobotiqCubeLiftEnvCfg_State(UR5RobotiqCubeLiftEnvCfg):
                 ]),
             },
         )
+        self.rewards.top_down_orientation_after_lift = RewTerm(
+            func=mdp.top_down_orientation_after_lift,
+            weight=2.0,
+            params={"minimal_height": 0.05},
+        )
