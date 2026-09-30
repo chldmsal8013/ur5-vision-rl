@@ -1,5 +1,5 @@
 from isaaclab.actuators import ImplicitActuatorCfg
-from isaaclab.assets import ArticulationCfg, RigidObjectCfg
+from isaaclab.assets import AssetBaseCfg, ArticulationCfg, RigidObjectCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg, ArticulationRootPropertiesCfg
@@ -154,6 +154,15 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
             offset=0.4,  # neutral position (half-closed)
         )
         self.commands.object_pose.body_name = "wrist_3_link"
+        self.commands.object_pose.ranges = mdp.UniformPoseCommandCfg.Ranges(
+            pos_x=(0.45, 0.55),
+            pos_y=(-0.27, -0.20),
+            pos_z=(0.04, 0.04),  # 트레이 바닥 위, 큐브가 놓일 높이
+            roll=(0.0, 0.0), pitch=(0.0, 0.0), yaw=(0.0, 0.0),
+        )
+        self.events.reset_object_position.params["pose_range"] = {
+            "x": (-0.05, 0.05), "y": (-0.15, 0.15), "z": (0.0, 0.0)
+        }
         # Target cube (red)
         self.scene.object = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Object",
@@ -187,6 +196,46 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
                     disable_gravity=False,
                 ),
             ),
+        )
+                #바닥판 (기존 코드, pos z를 벽 높이 절반만큼 낮춰서 벽 바닥과 맞춤)
+        self.scene.place_tray_floor = AssetBaseCfg(
+            prim_path="{ENV_REGEX_NS}/PlaceTrayFloor",
+            init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, -0.2, 0.01]),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.15, 0.15, 0.02),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.9, 0.9, 0.9)),
+                collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            ),
+        )
+
+        # 벽 4개 -- 바닥판 위에 얹히도록 z를 바닥 두께(0.02) + 벽 높이 절반만큼 올림
+        _wall_spawn = sim_utils.CuboidCfg(
+            size=(0.15, 0.01, 0.025),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.5)),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        )
+
+        self.scene.place_tray_wall_front = AssetBaseCfg(
+            prim_path="{ENV_REGEX_NS}/PlaceTrayWallFront",
+            init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, -0.2 - 0.07, 0.0325]),
+            spawn=_wall_spawn,
+        )
+        self.scene.place_tray_wall_back = AssetBaseCfg(
+            prim_path="{ENV_REGEX_NS}/PlaceTrayWallBack",
+            init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, -0.2 + 0.07, 0.0325]),
+            spawn=_wall_spawn,
+        )
+        self.scene.place_tray_wall_left = AssetBaseCfg(
+            prim_path="{ENV_REGEX_NS}/PlaceTrayWallLeft",
+            init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5 - 0.07, -0.2, 0.0325], rot=[0.7071, 0, 0, 0.7071]),
+            spawn=_wall_spawn,
+        )
+        self.scene.place_tray_wall_right = AssetBaseCfg(
+            prim_path="{ENV_REGEX_NS}/PlaceTrayWallRight",
+            init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5 + 0.07, -0.2, 0.0325], rot=[0.7071, 0, 0, 0.7071]),
+            spawn=_wall_spawn,
         )
         marker_cfg = FRAME_MARKER_CFG.copy()
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
@@ -265,8 +314,8 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
         )
 
         self.curriculum = None
-        self.rewards.action_rate.weight = -1e-4
-        self.rewards.joint_vel.weight = -1e-4
+        self.rewards.action_rate.weight = -1e-3
+        self.rewards.joint_vel.weight = -1e-3
         self.rewards.reaching_object.params["std"] = 0.3
         
         # Object_is_lifted bonus reward (Kimi 조언 Step 3)
@@ -275,7 +324,7 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
         # [FIX] object_is_lifted -> object_is_lifted_sustained: object 초기/리셋 높이(0.055, 아래
         # RigidObjectCfg 참고)가 이 minimal_height(0.05)보다 이미 높아서, height 단독 조건은
         # 아무것도 안 해도 거의 항상 참이 될 수 있음. EE 근접 조건 + N스텝 연속 유지 조건을 추가해
-        # "우연히 튕겨서 5cm 넘긴 것"과 "실제로 쥐고 버틴 것"을 구분함.
+        # "우연히 튕겨서 5cm 넘긴 것"과 "실제로 쥐고 버틴 것"을 구분함.0.35, 0.35
         self.rewards.object_is_lifted_bonus = RewTerm(
             func=mdp.object_is_lifted_sustained,
             weight=10.0,
@@ -432,7 +481,7 @@ class UR5RobotiqCubeLiftEnvCfg_State(UR5RobotiqCubeLiftEnvCfg):
         )
         self.rewards.object_goal_tracking = RewTerm(
             func=mdp.object_goal_distance_target_aware,
-            weight=2.0,
+            weight=0.5,
             params={"std": 0.3, "minimal_height": 0.05, "command_name": "object_pose"},
         )
         self.commands.target_color = TargetColorCommandCfg(resampling_time_range=(1e9, 1e9))
